@@ -61,6 +61,8 @@ const sendOtp = async (phone) => {
 
 app.post("/register-and-verify", async (req, res) => {
   const { phone } = req.body;
+
+  // Validate phone number
   if (!phone) {
     return res
       .status(400)
@@ -77,6 +79,17 @@ app.post("/register-and-verify", async (req, res) => {
           .json({ status: "error", message: "Database error: " + err.message });
       }
 
+      // If the phone number already exists, don't save the new user
+      if (results.length > 0) {
+        return res
+          .status(400)
+          .json({
+            status: "error",
+            message: "Phone number already registered.",
+          });
+      }
+
+      // Generate OTP
       const otp = await sendOtp(phone);
       if (!otp) {
         return res
@@ -84,43 +97,24 @@ app.post("/register-and-verify", async (req, res) => {
           .json({ status: "error", message: "Failed to send OTP." });
       }
 
-      if (results.length === 0) {
-        db.execute(
-          "INSERT INTO users (phone, password) VALUES (?, ?)",
-          [phone, otp],
-          (err) => {
-            if (err) {
-              return res.status(500).json({
-                status: "error",
-                message: "Error registering user: " + err.message,
-              });
-            }
-            return res.status(200).json({
-              status: "success",
-              message: "User registered successfully! OTP sent.",
-              otp,
+      // Save new user with OTP
+      db.execute(
+        "INSERT INTO users (phone, password) VALUES (?, ?)",
+        [phone, otp],
+        (err) => {
+          if (err) {
+            return res.status(500).json({
+              status: "error",
+              message: "Error registering user: " + err.message,
             });
           }
-        );
-      } else {
-        db.execute(
-          "UPDATE users SET password = ? WHERE phone = ?",
-          [otp, phone],
-          (err) => {
-            if (err) {
-              return res.status(500).json({
-                status: "error",
-                message: "Error updating OTP: " + err.message,
-              });
-            }
-            return res.status(200).json({
-              status: "success",
-              message: "OTP sent for verification!",
-              otp,
-            });
-          }
-        );
-      }
+          return res.status(200).json({
+            status: "success",
+            message: "User registered successfully! OTP sent.",
+            otp,
+          });
+        }
+      );
     }
   );
 });

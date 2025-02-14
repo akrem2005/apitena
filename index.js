@@ -81,16 +81,14 @@ app.post("/register-and-verify", async (req, res) => {
 
       // If the phone number already exists, don't save the new user
       if (results.length > 0) {
-        return res
-          .status(400)
-          .json({
-            status: "error",
-            message: "Phone number already registered.",
-          });
+        return res.status(400).json({
+          status: "error",
+          message: "Phone number already registered.",
+        });
       }
 
       // Generate OTP
-      const otp = await sendOtp(phone);
+      const password = await sendOtp(phone);
       if (!otp) {
         return res
           .status(500)
@@ -100,7 +98,7 @@ app.post("/register-and-verify", async (req, res) => {
       // Save new user with OTP
       db.execute(
         "INSERT INTO users (phone, password) VALUES (?, ?)",
-        [phone, otp],
+        [phone, password],
         (err) => {
           if (err) {
             return res.status(500).json({

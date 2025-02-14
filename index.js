@@ -62,59 +62,56 @@ const sendOtp = async (phone) => {
 app.post("/register-and-verify", async (req, res) => {
   const { phone } = req.body;
 
-  // Validate phone number
   if (!phone) {
     return res
       .status(400)
       .json({ status: "error", message: "Phone number is required." });
   }
 
-  db.execute(
-    "SELECT * FROM users WHERE phone = ?",
-    [phone],
-    async (err, results) => {
-      if (err) {
-        return res
-          .status(500)
-          .json({ status: "error", message: "Database error: " + err.message });
-      }
+  try {
+    // Check if the user already exists
+    const [existingUser] = await db
+      .promise()
+      .query("SELECT * FROM users WHERE phone = ?", [phone]);
 
-      // If the phone number already exists, don't save the new user
-      if (results.length > 0) {
-        return res.status(400).json({
-          status: "error",
-          message: "Phone number already registered.",
-        });
-      }
-
-      // Generate OTP
-      const password = await sendOtp(phone);
-      if (!otp) {
-        return res
-          .status(500)
-          .json({ status: "error", message: "Failed to send OTP." });
-      }
-
-      // Save new user with OTP
-      db.execute(
-        "INSERT INTO users (phone, password) VALUES (?, ?)",
-        [phone, password],
-        (err) => {
-          if (err) {
-            return res.status(500).json({
-              status: "error",
-              message: "Error registering user: " + err.message,
-            });
-          }
-          return res.status(200).json({
-            status: "success",
-            message: "User registered successfully! OTP sent.",
-            otp,
-          });
-        }
-      );
+    // Generate OTP
+    const otp = await sendOtp(phone);
+    if (!otp) {
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to send OTP." });
     }
-  );
+
+    if (existingUser.length === 0) {
+      // Insert new user
+      await db
+        .promise()
+        .execute("INSERT INTO users (phone, password) VALUES (?, ?)", [
+          phone,
+          otp,
+        ]);
+      return res.status(200).json({
+        status: "success",
+        message: "User registered successfully! OTP sent.",
+        otp,
+      });
+    } else {
+      // Update OTP for existing user
+      await db
+        .promise()
+        .execute("UPDATE users SET password = ? WHERE phone = ?", [otp, phone]);
+      return res.status(200).json({
+        status: "success",
+        message: "OTP sent for verification!",
+        otp,
+      });
+    }
+  } catch (error) {
+    console.error("Database error:", error.message);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Database error: " + error.message });
+  }
 });
 
 // Verify OTP route
